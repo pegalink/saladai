@@ -1,4 +1,4 @@
-name: Build and Push to Docker Hub
+name: Build and Push to Docker Hub 2
 
 on:
   workflow_dispatch: # Allows manual trigger from GitHub UI
