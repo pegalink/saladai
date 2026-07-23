@@ -21,4 +21,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/ollama-gemma4:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/ollama-ornith:latest
