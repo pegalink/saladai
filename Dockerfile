@@ -6,7 +6,7 @@ ENV OLLAMA_HOST=0.0.0.0:11434
 # Start Ollama in the background, wait for it to boot, pull the model, then shut down
 RUN ollama serve & \
     sleep 5 && \
-    ollama pull gemma4:e4b
+    ollama pull ornith:9b
 
 # Expose port
 EXPOSE 11434
