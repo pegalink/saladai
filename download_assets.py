@@ -21,7 +21,7 @@ login(token=os.environ["HF_TOKEN"])
 # download is the full ~24GB model, not a small pre-quantized one - size your
 # GitHub Actions runner disk and Salad node accordingly.
 MODEL_REPO = "unsloth/gemma-4-12b-it"
-CURATED_REPO_ID = "YOUR_HF_USERNAME/luau-curated-308"  # same as before
+CURATED_REPO_ID = "DiamantPetko/luau-curated-308"  # same as before
 
 print(f"Downloading model: {MODEL_REPO} ...")
 snapshot_download(repo_id=MODEL_REPO, local_dir="/app/model")
