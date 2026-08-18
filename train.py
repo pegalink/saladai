@@ -11,7 +11,7 @@ Gemma 4 12B with Unsloth QLoRA. Pushes checkpoints to HF Hub as it goes.
 import os
 import re
 import random
-from datasets import load_dataset, concatenate_datasets, load_from_disk
+from datasets import load_dataset, concatenate_datasets
 from huggingface_hub import login
 from unsloth import FastModel
 from unsloth.chat_templates import get_chat_template, train_on_responses_only
@@ -95,8 +95,8 @@ def format_curated_example(example):
     return {"messages": normalized}
 
 def main():
-    print("Loading TorpedoSoftware dataset from local image cache ...")
-    corpus_ds = load_from_disk("/app/data/corpus")
+    print("Loading TorpedoSoftware/Roblox-Luau-Reasoning-v1.0 ...")
+    corpus_ds = load_dataset("TorpedoSoftware/Roblox-Luau-Reasoning-v1.0", split="train")
 
     print("Filtering legacy-pattern-heavy rows ...")
     corpus_ds = filter_corpus_dataset(corpus_ds, min_score=-2)
@@ -104,8 +104,8 @@ def main():
     print("Formatting corpus dataset ...")
     corpus_ds = corpus_ds.map(format_corpus_example, remove_columns=corpus_ds.column_names)
 
-    print("Loading curated dataset from local image cache ...")
-    curated_ds = load_from_disk("/app/data/curated")
+    print(f"Loading curated dataset from {CURATED_REPO_ID} ...")
+    curated_ds = load_dataset(CURATED_REPO_ID, split="train")
     curated_ds = curated_ds.map(format_curated_example, remove_columns=[c for c in curated_ds.column_names if c != "messages"])
 
     print(f"Oversampling curated set {OVERSAMPLE_FACTOR}x ({len(curated_ds)} -> {len(curated_ds) * OVERSAMPLE_FACTOR}) ...")
@@ -117,9 +117,9 @@ def main():
     print(f"Final combined dataset size: {len(combined)}")
 
     # --- Model + tokenizer ---
-    print("Loading Gemma 4 12B from local image cache (no runtime download) ...")
+    print("Loading Gemma 4 12B (downloads at container start, not build time) ...")
     model, tokenizer = FastModel.from_pretrained(
-        model_name="/app/model",  # baked into the image at build time
+        model_name="unsloth/gemma-4-12b-it",
         max_seq_length=2048,
         dtype=None,
         load_in_4bit=True,
