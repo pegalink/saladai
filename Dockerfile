@@ -1,15 +1,12 @@
-FROM ollama/ollama:latest
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
 
-# Set host so Ollama listens on all interfaces (fixes the 503 error)
-ENV OLLAMA_HOST=0.0.0.0:11434
+RUN apt-get update && apt-get install -y python3 python3-pip git
 
-# Start Ollama in the background, wait for it to boot, pull the model, then shut down
-RUN ollama serve & \
-    sleep 5 && \
-    ollama pull ornith:9b
+RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
+RUN pip install unsloth transformers trl peft accelerate bitsandbytes datasets huggingface_hub
 
-# Expose port
-EXPOSE 11434
+WORKDIR /app
+COPY train.py .
+COPY dataset.jsonl .
 
-# Start Ollama when container runs
-ENTRYPOINT ["ollama", "serve"]
+CMD ["python3", "train.py"]
