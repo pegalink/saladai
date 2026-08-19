@@ -156,6 +156,36 @@ def main():
 
     combined = combined.map(apply_template)
 
+    # --- Resume support: check the Hub for a checkpoint from a prior run,
+    # since Salad nodes on lower priority tiers can be reallocated mid-training
+    # and local disk does NOT survive that - only what's already been pushed
+    # to the Hub is safe.
+    from huggingface_hub import HfApi, snapshot_download
+
+    HUB_MODEL_ID = "YOUR_HF_USERNAME/gemma4-luau-lora"  # must match hub_model_id below
+    resume_path = None
+
+    try:
+        api = HfApi()
+        files = api.list_repo_files(HUB_MODEL_ID)
+        checkpoint_dirs = sorted(
+            {f.split("/")[0] for f in files if f.startswith("checkpoint-")},
+            key=lambda x: int(x.split("-")[1]),
+        )
+        if checkpoint_dirs:
+            latest = checkpoint_dirs[-1]
+            print(f"Found existing checkpoint on Hub: {latest} - downloading to resume ...")
+            local_dir = snapshot_download(
+                repo_id=HUB_MODEL_ID,
+                allow_patterns=f"{latest}/*",
+            )
+            resume_path = f"{local_dir}/{latest}"
+            print(f"Will resume from: {resume_path}")
+        else:
+            print("No prior checkpoint found on Hub - starting fresh.")
+    except Exception as e:
+        print(f"Could not check for prior checkpoint (probably first run): {e}")
+
     # --- Train ---
     trainer = SFTTrainer(
         model=model,
@@ -168,14 +198,14 @@ def main():
             num_train_epochs=2,  # keep low - corpus-derived rows can dominate with more epochs
             learning_rate=2e-4,
             logging_steps=10,
-            save_steps=100,
+            save_steps=50,  # more frequent saves - minimize lost progress on reallocation
             optim="adamw_8bit",
             weight_decay=0.001,
             lr_scheduler_type="linear",
             seed=42,
             output_dir="outputs",
             push_to_hub=True,
-            hub_model_id="YOUR_HF_USERNAME/gemma4-luau-lora",  # CHANGE THIS
+            hub_model_id=HUB_MODEL_ID,
             hub_strategy="every_save",
             report_to="none",
         ),
@@ -190,7 +220,7 @@ def main():
     )
 
     print("Starting training ...")
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_path)
 
     print("Saving final adapter ...")
     model.save_pretrained("final_adapter")
