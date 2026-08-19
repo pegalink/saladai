@@ -117,9 +117,9 @@ def main():
     print(f"Final combined dataset size: {len(combined)}")
 
     # --- Model + tokenizer ---
-    print("Loading Gemma 4 12B (downloads at container start, not build time) ...")
+    print("Loading Gemma 4 26B (downloads at container start, not build time) ...")
     model, tokenizer = FastModel.from_pretrained(
-        model_name="unsloth/gemma-4-12b-it",
+        model_name="unsloth/gemma-4-26B-A4B-it",
         max_seq_length=2048,
         dtype=None,
         load_in_4bit=True,
