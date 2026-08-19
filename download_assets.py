@@ -20,7 +20,7 @@ login(token=os.environ["HF_TOKEN"])
 # "-bnb-4bit" repo for Gemma 4 the way there was for Gemma 3. This means the
 # download is the full ~24GB model, not a small pre-quantized one - size your
 # GitHub Actions runner disk and Salad node accordingly.
-MODEL_REPO = "unsloth/gemma-4-12b-it"
+MODEL_REPO = "unsloth/Qwen3.8-27B"
 CURATED_REPO_ID = "DiamantPetko/luau-curated-308"  # same as before
 
 print(f"Downloading model: {MODEL_REPO} ...")
