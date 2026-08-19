@@ -119,7 +119,7 @@ def main():
     # --- Model + tokenizer ---
     print("Loading Gemma 4 26B (downloads at container start, not build time) ...")
     model, tokenizer = FastModel.from_pretrained(
-        model_name="unsloth/gemma-4-26B-A4B-it",
+        model_name="unsloth/Qwen3.8-27B",
         max_seq_length=2048,
         dtype=None,
         load_in_4bit=True,
