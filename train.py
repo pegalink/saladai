@@ -22,7 +22,7 @@ login(token=os.environ["HF_TOKEN"])
 SYSTEM_PROMPT = "You are an expert Roblox Luau scripting assistant. You write correct, idiomatic, well-typed Luau code following current Roblox best practices, and explain your reasoning concisely."
 
 # CHANGE THIS to match what you used in push_dataset_to_hub.py
-CURATED_REPO_ID = "roboticrobot/luau-curated-308"
+CURATED_REPO_ID = "DiamantPetko/luau-curated-308"
 
 OVERSAMPLE_FACTOR = 4  # repeat our clean 277 curated examples this many times
 
