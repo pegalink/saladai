@@ -1,17 +1,11 @@
 """
 train.py - runs on the Salad GPU node.
-
-Loads TorpedoSoftware/Roblox-Luau-Reasoning-v1.0 (~15.3K rows) + our curated
-308-example dataset from the Hub, filters out the most legacy-pattern-heavy
-rows from the corpus-derived set, oversamples our curated set so it isn't
-statistically drowned out, formats everything into chat messages, and trains
-Gemma 4 12B with Unsloth QLoRA. Pushes checkpoints to HF Hub as it goes.
+Corrected to load baked-in assets from local disk instead of re-downloading them.
 """
 
 import os
 import re
-import random
-from datasets import load_dataset, concatenate_datasets
+from datasets import load_from_disk, concatenate_datasets # Updated to load_from_disk
 from huggingface_hub import login
 from unsloth import FastModel
 from unsloth.chat_templates import get_chat_template, train_on_responses_only
@@ -21,26 +15,23 @@ login(token=os.environ["HF_TOKEN"])
 
 SYSTEM_PROMPT = "You are an expert Roblox Luau scripting assistant. You write correct, idiomatic, well-typed Luau code following current Roblox best practices, and explain your reasoning concisely."
 
-# CHANGE THIS to match what you used in push_dataset_to_hub.py
-CURATED_REPO_ID = "DiamantPetko/luau-curated-308"
+OVERSAMPLE_FACTOR = 4
 
-OVERSAMPLE_FACTOR = 4  # repeat our clean 277 curated examples this many times
-
-# --- Legacy-pattern filtering for the corpus-derived dataset ---
+# --- Legacy-pattern filtering ---
 BAD_PATTERNS = [
-    r"\bwait\(",              # bare wait() instead of task.wait()
-    r":connect\(",             # lowercase legacy event API
-    r"\btick\(\)",              # legacy timing, prefer os.clock()/os.time()
-    r"BrickColor\.new\(",       # legacy color API, prefer Color3
-    r"Enum\.FontSize\b",        # deprecated
-    r"\.CoordinateFrame\b",     # legacy camera property, now Camera.CFrame
+    r"\bwait\(",
+    r":connect\(",
+    r"\btick\(\)",
+    r"BrickColor\.new\(",
+    r"Enum\.FontSize\b",
+    r"\.CoordinateFrame\b",
 ]
 GOOD_PATTERNS = [
     r"--!strict",
     r"task\.wait\(",
     r":Connect\(",
     r"\bos\.clock\(\)",
-    r": *(number|string|boolean|Instance|Player|BasePart)\b",  # rough type-annotation signal
+    r": *(number|string|boolean|Instance|Player|BasePart)\b",
 ]
 
 def modernity_score(text: str) -> int:
@@ -52,9 +43,6 @@ def modernity_score(text: str) -> int:
     return score
 
 def filter_corpus_dataset(ds, min_score: int = -2):
-    """Drop rows whose code+CoT skew heavily toward deprecated patterns.
-    min_score is intentionally lenient - this is a rough bias correction,
-    not a hard modern-only filter, or we'd lose most of the corpus."""
     def keep(example):
         combined_text = example["code"] + "\n" + example.get("chain_of_thought", "")
         return modernity_score(combined_text) >= min_score
@@ -66,12 +54,6 @@ def filter_corpus_dataset(ds, min_score: int = -2):
     return filtered
 
 def format_corpus_example(example):
-    """TorpedoSoftware format -> chat messages.
-    Per Unsloth's own Gemma 4 guidance: 'For most production assistants, the
-    simplest setup is to fine-tune on the final visible answer only.' So we
-    deliberately drop chain_of_thought here rather than trying to preserve it -
-    simpler, matches their recommended default, and avoids the ambiguity of
-    hand-guessing thinking-mode formatting."""
     assistant_content = (
         f"```lua\n{example['code']}\n```\n\n{example['explanation']}"
     )
@@ -84,9 +66,6 @@ def format_corpus_example(example):
     }
 
 def format_curated_example(example):
-    """Our dataset already has messages with role 'model' - normalize to 'assistant'
-    to match the corpus-derived formatting, since your tokenizer's chat template
-    expects a consistent role name."""
     messages = example["messages"]
     normalized = []
     for m in messages:
@@ -95,8 +74,9 @@ def format_curated_example(example):
     return {"messages": normalized}
 
 def main():
-    print("Loading TorpedoSoftware/Roblox-Luau-Reasoning-v1.0 ...")
-    corpus_ds = load_dataset("TorpedoSoftware/Roblox-Luau-Reasoning-v1.0", split="train")
+    # FIXED: Load the datasets from local image disk instead of downloading them at runtime
+    print("Loading pre-baked TorpedoSoftware/Roblox-Luau-Reasoning-v1.0 from disk...")
+    corpus_ds = load_from_disk("/app/data/corpus")
 
     print("Filtering legacy-pattern-heavy rows ...")
     corpus_ds = filter_corpus_dataset(corpus_ds, min_score=-2)
@@ -104,8 +84,9 @@ def main():
     print("Formatting corpus dataset ...")
     corpus_ds = corpus_ds.map(format_corpus_example, remove_columns=corpus_ds.column_names)
 
-    print(f"Loading curated dataset from {CURATED_REPO_ID} ...")
-    curated_ds = load_dataset(CURATED_REPO_ID, split="train")
+    # FIXED: Load your curated dataset from local image disk
+    print("Loading pre-baked curated dataset from disk...")
+    curated_ds = load_from_disk("/app/data/curated")
     curated_ds = curated_ds.map(format_curated_example, remove_columns=[c for c in curated_ds.column_names if c != "messages"])
 
     print(f"Oversampling curated set {OVERSAMPLE_FACTOR}x ({len(curated_ds)} -> {len(curated_ds) * OVERSAMPLE_FACTOR}) ...")
@@ -116,10 +97,10 @@ def main():
     combined = combined.shuffle(seed=42)
     print(f"Final combined dataset size: {len(combined)}")
 
-    # --- Model + tokenizer ---
-    print("Loading Gemma 4 26B (downloads at container start, not build time) ...")
+    # FIXED: Load the baked-in model from local path (/app/model) instead of the Hugging Face Hub
+    print("Loading baked-in Qwen model from local disk...")
     model, tokenizer = FastModel.from_pretrained(
-        model_name="unsloth/Qwen3.8-27B",
+        model_name="/app/model",
         max_seq_length=2048,
         dtype=None,
         load_in_4bit=True,
@@ -128,7 +109,7 @@ def main():
 
     model = FastModel.get_peft_model(
         model,
-        finetune_vision_layers=False,      # text-only for this use case
+        finetune_vision_layers=False,
         finetune_language_layers=True,
         finetune_attention_modules=True,
         finetune_mlp_modules=True,
@@ -139,16 +120,10 @@ def main():
         random_state=42,
     )
 
-    # Non-thinking template - matches the "final answer only" formatting above.
-    # Use "gemma-4-thinking" instead only if you reformat examples to include
-    # visible chain-of-thought consistently (Unsloth explicitly warns against
-    # mixing thinking/non-thinking formats in the same dataset).
-    tokenizer = get_chat_template(tokenizer, chat_template="gemma-4")
+    # FIXED: Changed from gemma-4 to qwen-2.5 to match the base model architecture
+    tokenizer = get_chat_template(tokenizer, chat_template="qwen-2.5")
 
     def apply_template(example):
-        # Unsloth's own recipe strips the leading <bos> here since the
-        # tokenizer adds exactly one automatically - leaving it in causes a
-        # duplicate <bos> token during training.
         text = tokenizer.apply_chat_template(
             example["messages"], tokenize=False, add_generation_prompt=False
         ).removeprefix("<bos>")
@@ -156,13 +131,10 @@ def main():
 
     combined = combined.map(apply_template)
 
-    # --- Resume support: check the Hub for a checkpoint from a prior run,
-    # since Salad nodes on lower priority tiers can be reallocated mid-training
-    # and local disk does NOT survive that - only what's already been pushed
-    # to the Hub is safe.
+    # --- Resume support ---
     from huggingface_hub import HfApi, snapshot_download
 
-    HUB_MODEL_ID = "YOUR_HF_USERNAME/gemma4-luau-lora"  # must match hub_model_id below
+    HUB_MODEL_ID = "YOUR_HF_USERNAME/qwen3.8-luau-lora"  # Recommend changing this to reflect your Qwen model
     resume_path = None
 
     try:
@@ -184,7 +156,7 @@ def main():
         else:
             print("No prior checkpoint found on Hub - starting fresh.")
     except Exception as e:
-        print(f"Could not check for prior checkpoint (probably first run): {e}")
+        print(f"Could not check for prior checkpoint: {e}")
 
     # --- Train ---
     trainer = SFTTrainer(
@@ -195,10 +167,10 @@ def main():
             dataset_text_field="text",
             per_device_train_batch_size=2,
             gradient_accumulation_steps=4,
-            num_train_epochs=2,  # keep low - corpus-derived rows can dominate with more epochs
+            num_train_epochs=2,
             learning_rate=2e-4,
             logging_steps=10,
-            save_steps=50,  # more frequent saves - minimize lost progress on reallocation
+            save_steps=50,
             optim="adamw_8bit",
             weight_decay=0.001,
             lr_scheduler_type="linear",
@@ -211,12 +183,11 @@ def main():
         ),
     )
 
-    # Only compute loss on the assistant's actual response, not the user turn -
-    # standard practice, and specifically documented for Gemma 4 by Unsloth.
+    # FIXED: Replaced Gemma markers with correct Qwen ChatML markers
     trainer = train_on_responses_only(
         trainer,
-        instruction_part="<|turn>user\n",
-        response_part="<|turn>model\n",
+        instruction_part="<|im_start|>user\n",
+        response_part="<|im_start|>assistant\n",
     )
 
     print("Starting training ...")
